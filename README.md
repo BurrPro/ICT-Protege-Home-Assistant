@@ -26,18 +26,33 @@ or enable an event subscription.
 
 ## Install or upgrade
 
+### Method 1: HACS (Recommended)
+1.  Open **HACS** in Home Assistant.
+2.  Go to **Integrations** > **Custom repositories** (top right menu).
+3.  Paste this repository URL and select **Integration**.
+4.  Click **Download**.
+5.  **Restart Home Assistant**.
+
+### Method 2: Manual
+1.  Download the repository as a ZIP file.
+2.  Extract the `custom_components/ict_automation` folder.
+3.  Copy this folder into your Home Assistant's `/config/custom_components/` directory.
+4.  Restart Home Assistant.
+
+
 See [DEPLOYMENT.md](DEPLOYMENT.md) for upgrade changes and a short acceptance check.
 
-1. Back up the existing integration folder and Home Assistant configuration.
-2. Copy `custom_components/ict_automation` into Home Assistant's `custom_components`
-   directory, replacing the previous integration files, or update through HACS after
-   this version has been published to your repository.
-3. Restart Home Assistant. New installations use **Settings > Devices & Services >
-   Add Integration > ICT Protege Automation**.
-4. Enter the controller host, port, service PIN and checksum selection. Existing
-   entries without a checksum setting use **8 Bit Sum**.
-5. Use **Configure** to add or scan records and choose arming features. Connection
-   settings can be changed under **Edit Connection Settings**.
+## Configuration
+
+1.  Go to **Settings > Devices & Services > Add Integration**.
+2.  Search for **"ICT Protege Automation"**.
+3.  Enter your connection details:
+    * **Host:** IP Address of your ICT Controller (e.g., `192.168.1.50`).
+    * **Port:** `21000`.
+    * **Service PIN:** A valid User PIN from your ICT system.
+
+> **🔐 About the Service PIN:**
+> The PIN you enter here is used to authenticate the connection. This user **must have permission** to control the Doors, Areas, and Outputs you intend to use. If the user does not have "Door Control" permissions in Protege, Home Assistant will be unable to unlock doors.
 
 Use a service PIN with permission to monitor the configured records. Controls use
 that PIN for doors, outputs and input bypass; area controls require the PIN entered
