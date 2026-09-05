@@ -32,7 +32,7 @@ async def validate_connection(data):
         await client.authenticate()
         return None
     except ICTNack as err:
-        return "invalid_auth" if err.code in (0x0300, 0x0301, 0x0302) else "cannot_connect"
+        return "invalid_auth" if err.code == 0x0302 else "cannot_connect"
     except ICTError:
         return "cannot_connect"
     finally:
@@ -132,7 +132,6 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_configure_arming(self, user_input=None):
         if user_input is not None:
             self.options.update(user_input)
-            self._save_options()
             return self.async_create_entry(title="", data=self.options)
 
         return self.async_show_form(
@@ -154,7 +153,6 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
                 parsed = {key: self._parse_raw_section(raw_data.get(key, {}))
                           for key in (CONF_DOORS, CONF_AREAS, CONF_INPUTS, CONF_OUTPUTS, CONF_TROUBLES)}
                 self.options.update(parsed)
-                self._save_options()
                 return self.async_create_entry(title="", data=self.options)
             except Exception: errors["base"] = "yaml_error"
 
@@ -183,7 +181,6 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
                 if user_input.get("next_action") == "add_more":
                     return self.async_show_form(step_id=step_id, data_schema=self._get_schema_wizard(), description_placeholders={"type": type_name})
                 else:
-                    self._save_options()
                     return self.async_create_entry(title="", data=self.options)
         return self.async_show_form(step_id=step_id, data_schema=self._get_schema_wizard(), errors=errors, description_placeholders={"type": type_name})
 
@@ -236,7 +233,6 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
                             ent_reg.async_remove(entry.entity_id)
                 except: continue
             self.options[storage_key] = storage_dict
-            self._save_options()
             return self.async_create_entry(title="", data=self.options)
 
         if not storage_dict: return self.async_abort(reason="no_devices")
@@ -348,7 +344,7 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
                 if limit:
                     await self._run_scan(client, group, limit, self._get_dict(key), name, key)
         except ICTNack as err:
-            return self.async_abort(reason="invalid_auth" if err.code in (0x0301, 0x0302) else "cannot_connect")
+            return self.async_abort(reason="invalid_auth" if err.code == 0x0302 else "cannot_connect")
         except ICTError:
             return self.async_abort(reason="cannot_connect")
         finally:
@@ -381,7 +377,7 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
                     errors["base"] = "already_configured"
                 else:
                     self.hass.config_entries.async_update_entry(self._config_entry,
-                        data={**self.data, **user_input}, unique_id=unique_id)
+                        data={**self.data, **user_input}, options=self.options, unique_id=unique_id)
                     return self.async_create_entry(title="", data=self.options)
         schema = vol.Schema({
             vol.Required(CONF_HOST, default=self.data.get(CONF_HOST)): str,

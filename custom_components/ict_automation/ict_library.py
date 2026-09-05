@@ -63,7 +63,7 @@ class ICTClient:
 
     @property
     def available(self):
-        return self._connected and self._ready
+        return self._connected and self._ready and not self._shutdown
 
     def record_available(self, kind, idx):
         return (self.available and (kind, idx) in self.cache
@@ -102,8 +102,17 @@ class ICTClient:
         return True
 
     async def authenticate(self):
+        pin = encode_pin(self.service_pin)
         async with self._lock:
-            await self._request(0, 2, encode_pin(self.service_pin))
+            try:
+                await self._request(0, 2, pin)
+            except ICTNack as err:
+                if err.code != 0x0300:
+                    raise
+                # A reload may inherit the service's old login. Do not treat
+                # that as PIN validation: clear it and verify this PIN once.
+                await self._logout()
+                await self._request(0, 2, pin)
             await self._request(0, 4, struct.pack("<H", 6000))
         return True
 
@@ -126,8 +135,31 @@ class ICTClient:
         self._supervisor = asyncio.create_task(self._supervisor_loop())
         self._poller = asyncio.create_task(self._safety_poll_loop())
 
+    async def _logout(self):
+        try:
+            await self._request(0, 3, b"")
+        except ICTNack as err:
+            if err.code != 0x0301:  # Already logged out is an acceptable end state.
+                raise
+
+    async def _logout_before_close(self):
+        async with self._lock:
+            if self._connected:
+                await self._logout()
+
     async def stop(self):
         self._shutdown = True
+        # Keep the reader alive to receive the logout ACK before closing TCP.
+        # Bound the wait if another operation owns the request lock.
+        try:
+            if self._connected:
+                await asyncio.wait_for(self._logout_before_close(), RESPONSE_TIMEOUT * 2)
+        except (ICTError, asyncio.TimeoutError):
+            _LOGGER.debug("ICT logout could not be confirmed during shutdown")
+        finally:
+            await self._stop_tasks_and_disconnect()
+
+    async def _stop_tasks_and_disconnect(self):
         tasks = [t for t in (self._supervisor, self._poller) if t is not None]
         for task in tasks:
             task.cancel()

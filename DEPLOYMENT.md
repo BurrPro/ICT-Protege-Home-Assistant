@@ -1,4 +1,12 @@
-# Deploying ICT Protege Automation 1.8.0
+# Deploying ICT Protege Automation 1.8.1
+
+## Reload login fix
+
+Version 1.8.1 sends Logout before closing a healthy session. If the controller retains
+a previous login, startup performs one Logout and fresh Login, requiring acceptance
+of the configured PIN. Persistent session errors retry setup rather than asking for
+a new PIN. Replace the component and restart Home Assistant to clear the failed
+setup and reload the new code; the existing service PIN can remain unchanged.
 
 ## Upgrade changes
 
@@ -26,7 +34,7 @@
 2. Extract the deployment ZIP. Copy its `custom_components/ict_automation` folder to
    `/config/custom_components/ict_automation`, replacing the existing component files.
    Do not copy tests or development dependencies into Home Assistant.
-3. Restart Home Assistant. Confirm the integration reports version 1.8.0 and loads.
+3. Restart Home Assistant. Confirm the integration reports version 1.8.1 and loads.
 4. Match checksum settings at both ends. Default is 8 Bit Sum; None is available
    under Configure > Edit Connection Settings. Keep command/status/event ACK settings
    enabled as documented in README.md.

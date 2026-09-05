@@ -250,3 +250,13 @@ class ConnectionOptionsTests(unittest.IsolatedAsyncioTestCase):
         result=await handler.async_step_configure_connection({'host':'second','port':21000,
             'password':'1234','checksum':'none'})
         self.assertEqual(result['errors']['base'],'already_configured')
+
+
+class ReloadFailureClassificationTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = SetupTests.asyncSetUp
+    asyncTearDown = SetupTests.asyncTearDown
+    async def test_retained_login_is_retryable_not_pin_reconfiguration(self):
+        from homeassistant.exceptions import ConfigEntryNotReady
+        self.panel.retained_login = self.panel.sticky_login = True
+        with self.assertRaises(ConfigEntryNotReady):
+            await setup.async_setup_entry(self.hass,self.entry)

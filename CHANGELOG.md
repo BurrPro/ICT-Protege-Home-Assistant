@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.1 - 2026-09-06
+
+- Log out before closing healthy sessions during reload, unload and temporary validation.
+- Recover a retained login with one confirmed logout/login sequence; never accept an already-logged-in NACK as PIN verification.
+- Treat persistent session errors as retryable setup failures instead of invalid credentials.
+- Avoid redundant options writes when finishing configuration changes.
+- Add regression tests for retained sessions, reload, rejected PINs and bounded recovery.
+
 ## 1.8.0 - 2026-09-06
 
 - Correct normal disarm, Away, Stay and Force Arm command mappings so normal area

@@ -36,13 +36,18 @@ class PanelWriter:
         if self.panel.silent:
             return
         if (group, sub) == (0, 2):
-            if payload[2:] != b'\x01\x02\x03\x04\xff':
+            if self.panel.retained_login:
+                reply = frame(b'\xff\xff\x00\x03', checksum, 0xc0)
+            elif payload[2:] != b'\x01\x02\x03\x04\xff':
                 self.logged_in = False
                 reply = frame(b'\xff\xff\x02\x03', checksum, 0xc0)
             else:
                 self.logged_in = True
+                self.panel.retained_login = True
         elif (group, sub) == (0, 3):
             self.logged_in = False
+            if not self.panel.sticky_login:
+                self.panel.retained_login = False
         elif sub == 0x80:
             idx = struct.unpack('<I', payload[2:6])[0]
             if idx == 999:
@@ -82,6 +87,7 @@ class Panel:
         self.commands, self.wire, self.writers = [], [], []
         self.area_state, self.area_flags = 0, 0
         self.silent = self.reject_control = False
+        self.retained_login = self.sticky_login = False
 
     async def connect(self, *args):
         reader = asyncio.StreamReader()
@@ -240,3 +246,38 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_troubles_are_not_inferred_from_physical_inputs(self):
         self.client.set_configuration([], [], [3], [], [7])
         self.assertEqual(self.client.monitored_items, [(0,4,3),(0,6,7)])
+
+
+class ReloadSessionTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = ClientTests.asyncSetUp
+    asyncTearDown = ClientTests.asyncTearDown
+    async def test_stale_login_requires_logout_then_verified_login(self):
+        self.panel.retained_login = True
+        await self.client.start()
+        self.assertEqual([(g,s) for g,s,_ in self.panel.commands[:4]], [(0,2),(0,3),(0,2),(0,4)])
+        self.assertTrue(self.client.available)
+
+    async def test_wrong_pin_is_not_accepted_after_stale_login(self):
+        self.panel.retained_login = True
+        self.client.service_pin = '9999'
+        with self.assertRaisesRegex(module.ICTNack, 'Invalid PIN'):
+            await self.client.start()
+        self.assertFalse(self.client.available)
+        self.assertFalse(any((g,s)==(0,5) for g,s,_ in self.panel.commands))
+
+    async def test_stop_logs_out_before_close_and_reload_works(self):
+        await self.client.start()
+        await self.client.stop()
+        self.assertEqual(self.panel.commands[-1][:2], (0,3))
+        self.assertFalse(self.panel.retained_login)
+        self.assertTrue(self.panel.writers[-1].closed)
+        await self.client.start()
+        self.assertTrue(self.client.available)
+
+    async def test_persistent_already_logged_in_is_bounded(self):
+        self.panel.retained_login = self.panel.sticky_login = True
+        with self.assertRaises(module.ICTNack) as caught:
+            await self.client.start()
+        self.assertEqual(caught.exception.code, 0x0300)
+        self.assertEqual(sum((g,s)==(0,2) for g,s,_ in self.panel.commands),2)
+        self.assertFalse(self.client.available)

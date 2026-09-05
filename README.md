@@ -1,6 +1,6 @@
 # ICT Protege Automation for Home Assistant
 
-Version 1.8.0. A local TCP integration for the ICT WX/GX Automation and Control service.
+Version 1.8.1. A local TCP integration for the ICT WX/GX Automation and Control service.
 Requires Home Assistant 2024.11 or later.
 
 ## Controller service settings

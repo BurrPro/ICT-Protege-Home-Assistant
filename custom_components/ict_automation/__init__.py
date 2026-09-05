@@ -74,7 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.start()
     except ICTNack as err:
         await client.stop()
-        if err.code in (0x0300, 0x0301, 0x0302):
+        if err.code == 0x0302:
             raise ConfigEntryAuthFailed(str(err)) from err
         raise ConfigEntryNotReady(str(err)) from err
     except (ICTError, ValueError, TypeError) as err:
