@@ -1,0 +1,87 @@
+name: Test and release
+
+"on":
+  push:
+  pull_request:
+    branches:
+      - Release
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-and-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.12"
+          - "3.13"
+          - "3.14"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run offline tests
+        run: python -B -m unittest discover -s tests -v
+
+  release:
+    name: Publish release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/Release'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Build release package
+        id: package
+        run: python .github/scripts/prepare_release.py --github-output "$GITHUB_OUTPUT"
+
+      - name: Reject an already published version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error::${RELEASE_TAG} already exists. Bump the version in manifest.json and add its CHANGELOG.md section."
+            exit 1
+          fi
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.package.outputs.version }}
+          RELEASE_ARCHIVE: ${{ steps.package.outputs.archive }}
+          RELEASE_NOTES: ${{ steps.package.outputs.notes }}
+        run: |
+          gh release create "$RELEASE_TAG" "$RELEASE_ARCHIVE#ICT Protege Automation ${RELEASE_VERSION}" \
+            --target "$GITHUB_SHA" \
+            --title "ICT Protege Automation ${RELEASE_VERSION}" \
+            --notes-file "$RELEASE_NOTES" \
+            --latest

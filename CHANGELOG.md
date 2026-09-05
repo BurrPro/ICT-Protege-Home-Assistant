@@ -2,6 +2,8 @@
 
 ## 1.9.2 - 2026-09-06
 
+- Add GitHub Actions coverage for Python 3.12 through 3.14 and automatic versioned
+  releases from the `Release` branch.
 - Treat an acknowledged control as successful even if its immediate status refresh
   or service-session restoration subsequently fails.
 - Send door and output controls through the existing authenticated service session,

@@ -119,6 +119,20 @@ API doubles for offline platform, flow and registry tests. They do not represent
 live controller test or a complete Home Assistant runtime test. No PINs or raw
 login packets are logged by the integration.
 
+## Automated tests and releases
+
+GitHub Actions runs the offline test suite on Python 3.12, 3.13 and 3.14 for every
+push, for pull requests targeting `Release`, and when started manually. A push to
+the case-sensitive `Release` branch also publishes a GitHub release after every
+test job passes.
+
+Before pushing a release commit, update the version in
+`custom_components/ict_automation/manifest.json` and add the matching section to
+`CHANGELOG.md`. The workflow creates tag `v<version>`, builds
+`ict_automation-<version>.zip` with the required `custom_components/ict_automation`
+layout, and uses that changelog section as the release notes. It refuses to replace
+an existing tag, so each release commit needs a new component version.
+
 
 ## Garage doors and other toggle controls
 
