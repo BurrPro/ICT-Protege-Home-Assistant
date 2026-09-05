@@ -6,10 +6,11 @@ from homeassistant.helpers import entity_registry as er, device_registry as dr
 from .const import (
     DOMAIN, CONF_HOST, CONF_PORT, CONF_PASSWORD, CONF_CHECKSUM, DEFAULT_CHECKSUM,
     CONF_DOORS, CONF_AREAS, CONF_INPUTS, CONF_OUTPUTS, CONF_TROUBLES,
+    DOOR_TYPE_TOGGLE, get_door_type,
 )
 from .ict_library import ICTClient, ICTError, ICTNack, encode_pin
 
-PLATFORMS = ["lock", "binary_sensor", "switch", "alarm_control_panel", "select"]
+PLATFORMS = ["button", "lock", "binary_sensor", "switch", "alarm_control_panel", "select"]
 RECORD_KINDS = {CONF_DOORS: "door", CONF_AREAS: "area", CONF_INPUTS: "input",
                 CONF_OUTPUTS: "output", CONF_TROUBLES: "trouble"}
 
@@ -103,7 +104,8 @@ def _remove_unconfigured_entities(hass, entry, ids):
     valid_devices = {(DOMAIN, f"{entry.entry_id}:ict_controller")}
     for key, kind in RECORD_KINDS.items():
         for idx in ids[key]:
-            valid_entities.add(f"{entry.entry_id}_ict_{kind}_{idx}")
+            suffix = "_toggle" if kind == "door" and get_door_type(entry.options, idx) == DOOR_TYPE_TOGGLE else ""
+            valid_entities.add(f"{entry.entry_id}_ict_{kind}{suffix}_{idx}")
             valid_devices.add((DOMAIN, f"{entry.entry_id}:{kind}_{idx}"))
             if kind == "door":
                 valid_entities.add(f"{entry.entry_id}_ict_door_contact_{idx}")

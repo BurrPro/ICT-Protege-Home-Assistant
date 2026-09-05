@@ -4,6 +4,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector, entity_registry as er
 from .const import (
     DOMAIN, CONF_HOST, CONF_PORT, CONF_PASSWORD,
+    CONF_DOOR_TYPES, DOOR_TYPE_LOCK, DOOR_TYPE_TOGGLE, get_door_type,
     CONF_CHECKSUM, CHECKSUM_NONE, CHECKSUM_8_BIT_SUM, DEFAULT_CHECKSUM,
     CONF_DOORS, CONF_AREAS, CONF_INPUTS, CONF_OUTPUTS, CONF_TROUBLES,
     CONF_ENABLE_AWAY, CONF_ENABLE_STAY, CONF_ENABLE_BYPASS
@@ -37,6 +38,13 @@ async def validate_connection(data):
         return "cannot_connect"
     finally:
         await client.stop()
+
+
+def door_type_selector():
+    return selector.SelectSelector(selector.SelectSelectorConfig(
+        options=[{"value": DOOR_TYPE_LOCK, "label": "Normal lock"},
+                 {"value": DOOR_TYPE_TOGGLE, "label": "Toggle (timed pulse)"}],
+        mode=selector.SelectSelectorMode.DROPDOWN))
 
 
 def checksum_selector():
@@ -100,6 +108,7 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
         self.data = dict(config_entry.data)
 
         self.options.setdefault(CONF_DOORS, {})
+        self.options.setdefault(CONF_DOOR_TYPES, {})
         self.options.setdefault(CONF_AREAS, {})
         self.options.setdefault(CONF_INPUTS, {})
         self.options.setdefault(CONF_OUTPUTS, {})
@@ -123,10 +132,37 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_init(self, user_input=None):
         return self.async_show_menu(step_id="init", menu_options=[
-            "scan_devices", "configure_arming", "configure_connection",
+            "scan_devices", "configure_arming", "configure_connection", "configure_door_types",
             "add_door", "add_area", "add_input", "add_output", "add_trouble",
             "edit_device", "remove_device", "raw_editor"
         ])
+
+    async def async_step_configure_door_types(self, user_input=None):
+        doors = self._get_dict(CONF_DOORS)
+        if not doors:
+            return self.async_abort(reason="no_devices")
+        if user_input is not None:
+            self._door_type_id = int(user_input["door"])
+            if self._door_type_id not in doors:
+                return self.async_abort(reason="no_devices")
+            return await self.async_step_door_type()
+        choices = [{"value": str(k), "label": f"{k}: {name}"} for k, name in doors.items()]
+        return self.async_show_form(step_id="configure_door_types", data_schema=vol.Schema({
+            vol.Required("door"): selector.SelectSelector(selector.SelectSelectorConfig(
+                options=choices, mode=selector.SelectSelectorMode.DROPDOWN))}))
+
+    async def async_step_door_type(self, user_input=None):
+        if user_input is not None:
+            mode = user_input["door_type"]
+            if mode not in (DOOR_TYPE_LOCK, DOOR_TYPE_TOGGLE):
+                return self.async_abort(reason="invalid_door_type")
+            modes = self._get_dict(CONF_DOOR_TYPES)
+            modes[self._door_type_id] = mode
+            self.options[CONF_DOOR_TYPES] = modes
+            return self.async_create_entry(title="", data=self.options)
+        return self.async_show_form(step_id="door_type", data_schema=vol.Schema({
+            vol.Required("door_type", default=get_door_type(self.options, self._door_type_id)): door_type_selector()}),
+            description_placeholders={"name": self._get_dict(CONF_DOORS)[self._door_type_id]})
 
     # --- ARMING MODES CONFIGURATION ---
     async def async_step_configure_arming(self, user_input=None):
@@ -152,12 +188,22 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
                 if not isinstance(raw_data, dict): raise ValueError("Root must be a dictionary")
                 parsed = {key: self._parse_raw_section(raw_data.get(key, {}))
                           for key in (CONF_DOORS, CONF_AREAS, CONF_INPUTS, CONF_OUTPUTS, CONF_TROUBLES)}
+                modes = raw_data.get(CONF_DOOR_TYPES, self._get_dict(CONF_DOOR_TYPES))
+                if not isinstance(modes, dict):
+                    raise ValueError("Door types must be a mapping")
+                modes = {RECORD_ID(k): value for k, value in modes.items()}
+                if any(value not in (DOOR_TYPE_LOCK, DOOR_TYPE_TOGGLE) for value in modes.values()):
+                    raise ValueError("Invalid door type")
+                if CONF_DOOR_TYPES in raw_data and set(modes) - set(parsed[CONF_DOORS]):
+                    raise ValueError("Door type references an unconfigured door")
+                parsed[CONF_DOOR_TYPES] = {k: value for k, value in modes.items() if k in parsed[CONF_DOORS]}
                 self.options.update(parsed)
                 return self.async_create_entry(title="", data=self.options)
             except Exception: errors["base"] = "yaml_error"
 
         current_config = {
-            "doors": self._get_dict(CONF_DOORS), "areas": self._get_dict(CONF_AREAS),
+            "doors": self._get_dict(CONF_DOORS), "door_types": self._get_dict(CONF_DOOR_TYPES),
+            "areas": self._get_dict(CONF_AREAS),
             "inputs": self._get_dict(CONF_INPUTS), "outputs": self._get_dict(CONF_OUTPUTS),
             "troubles": self._get_dict(CONF_TROUBLES)
         }
@@ -178,14 +224,18 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
             else:
                 storage_dict[dev_id] = user_input["name"]
                 self.options[storage_key] = storage_dict
+                if storage_key == CONF_DOORS:
+                    modes = self._get_dict(CONF_DOOR_TYPES)
+                    modes[dev_id] = user_input.get("door_type", DOOR_TYPE_LOCK)
+                    self.options[CONF_DOOR_TYPES] = modes
                 if user_input.get("next_action") == "add_more":
-                    return self.async_show_form(step_id=step_id, data_schema=self._get_schema_wizard(), description_placeholders={"type": type_name})
+                    return self.async_show_form(step_id=step_id, data_schema=self._get_schema_wizard(storage_key == CONF_DOORS), description_placeholders={"type": type_name})
                 else:
                     return self.async_create_entry(title="", data=self.options)
-        return self.async_show_form(step_id=step_id, data_schema=self._get_schema_wizard(), errors=errors, description_placeholders={"type": type_name})
+        return self.async_show_form(step_id=step_id, data_schema=self._get_schema_wizard(storage_key == CONF_DOORS), errors=errors, description_placeholders={"type": type_name})
 
-    def _get_schema_wizard(self):
-        return vol.Schema({
+    def _get_schema_wizard(self, is_door=False):
+        schema = {
             vol.Required("dev_id"): RECORD_ID,
             vol.Required("name"): str,
             vol.Required("next_action", default="add_more"): selector.SelectSelector(
@@ -197,7 +247,10 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
                     mode=selector.SelectSelectorMode.LIST
                 )
             )
-        })
+        }
+        if is_door:
+            schema[vol.Required("door_type", default=DOOR_TYPE_LOCK)] = door_type_selector()
+        return vol.Schema(schema)
 
     async def async_step_add_door(self, user_input=None): return await self._add_item_step(user_input, "door", CONF_DOORS, "add_door")
     async def async_step_add_area(self, user_input=None): return await self._add_item_step(user_input, "area", CONF_AREAS, "add_area")
@@ -215,7 +268,7 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
             def get_uids_to_remove(dev_id, key):
                 uids = []
                 if key == CONF_DOORS:
-                    uids.append(f"ict_door_{dev_id}"); uids.append(f"ict_door_contact_{dev_id}")
+                    uids.append(f"ict_door_{dev_id}"); uids.append(f"ict_door_contact_{dev_id}"); uids.append(f"ict_door_toggle_{dev_id}")
                 elif key == CONF_AREAS: uids.append(f"ict_area_{dev_id}")
                 elif key == CONF_INPUTS:
                     uids.append(f"ict_input_{dev_id}"); uids.append(f"ict_input_bypass_{dev_id}")
@@ -227,6 +280,10 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
                 try:
                     dev_id = int(i)
                     if dev_id in storage_dict: del storage_dict[dev_id]
+                    if storage_key == CONF_DOORS:
+                        modes = self._get_dict(CONF_DOOR_TYPES)
+                        modes.pop(dev_id, None)
+                        self.options[CONF_DOOR_TYPES] = modes
                     target_uids = [f"{self._config_entry.entry_id}_{uid}" for uid in get_uids_to_remove(dev_id, storage_key)]
                     for entry in list(ent_reg.entities.values()):
                         if entry.config_entry_id == self._config_entry.entry_id and entry.unique_id in target_uids:

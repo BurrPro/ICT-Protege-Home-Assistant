@@ -1,8 +1,20 @@
-# Deploying ICT Protege Automation 1.8.1
+# Deploying ICT Protege Automation 1.9.0
+
+## Toggle door type
+
+After updating and restarting Home Assistant, use Configure > Configure Door Types
+> select Door 1 > Toggle (timed pulse). Keep ICT's Lock Activation Time at 1 second
+and the reed configured as that ICT Door's contact. A Toggle button replaces the
+lock control while the existing Contact sensor remains. Update any dashboard or
+automation that used this door's old lock entity to use the new button.
+
+Confirm a single press produces one timed pulse and the contact follows the reed.
+There is no automatic pulse retry or inferred opening/closing direction. Other
+normal lock doors and the prior reload/login fix remain supported.
 
 ## Reload login fix
 
-Version 1.8.1 sends Logout before closing a healthy session. If the controller retains
+The 1.8.1 reload fix sends Logout before closing a healthy session. If the controller retains
 a previous login, startup performs one Logout and fresh Login, requiring acceptance
 of the configured PIN. Persistent session errors retry setup rather than asking for
 a new PIN. Replace the component and restart Home Assistant to clear the failed
@@ -34,7 +46,7 @@ setup and reload the new code; the existing service PIN can remain unchanged.
 2. Extract the deployment ZIP. Copy its `custom_components/ict_automation` folder to
    `/config/custom_components/ict_automation`, replacing the existing component files.
    Do not copy tests or development dependencies into Home Assistant.
-3. Restart Home Assistant. Confirm the integration reports version 1.8.1 and loads.
+3. Restart Home Assistant. Confirm the integration reports version 1.9.0 and loads.
 4. Match checksum settings at both ends. Default is 8 Bit Sum; None is available
    under Configure > Edit Connection Settings. Keep command/status/event ACK settings
    enabled as documented in README.md.

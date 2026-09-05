@@ -100,7 +100,7 @@ def install():
     module('homeassistant.components.alarm_control_panel', AlarmControlPanelEntity=type('AlarmEntity',(Entity,),{}),
            AlarmControlPanelEntityFeature=Feature, AlarmControlPanelState=AlarmState,
            CodeFormat=types.SimpleNamespace(NUMBER='number'))
-    for platform, classname in [('lock','LockEntity'),('switch','SwitchEntity'),('select','SelectEntity'),('binary_sensor','BinarySensorEntity')]:
+    for platform, classname in [('button','ButtonEntity'),('lock','LockEntity'),('switch','SwitchEntity'),('select','SelectEntity'),('binary_sensor','BinarySensorEntity')]:
         attrs = {classname:type(classname,(Entity,),{})}
         if platform == 'binary_sensor':
             attrs['BinarySensorDeviceClass']=types.SimpleNamespace(DOOR='door',PROBLEM='problem')

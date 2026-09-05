@@ -1,6 +1,6 @@
 # ICT Protege Automation for Home Assistant
 
-Version 1.8.1. A local TCP integration for the ICT WX/GX Automation and Control service.
+Version 1.9.0. A local TCP integration for the ICT WX/GX Automation and Control service.
 Requires Home Assistant 2024.11 or later.
 
 ## Controller service settings
@@ -118,3 +118,44 @@ Tests use a deterministic controller transport simulator and small Home Assistan
 API doubles for offline platform, flow and registry tests. They do not represent a
 live controller test or a complete Home Assistant runtime test. No PINs or raw
 login packets are logged by the integration.
+
+
+## Garage doors and other toggle controls
+
+For a garage door using an ICT Door record's lock output, choose **Toggle (timed
+pulse)** when adding the door, or use **Configure > Configure Door Types**, select
+an existing door, and change its type.
+
+For the supplied garage setup, select Door 1 and Toggle. Keep ICT's Lock Activation
+Time at 1 second. The integration sends the standard timed Unlock command (group
+1, command 1); ICT handles the relay and its duration. It does not send latched
+Unlock, a Lock command, or a separate relay-on/relay-off sequence.
+
+A Toggle door exposes a **Toggle button** plus the existing **Contact sensor** on the
+same device. Each press requests one pulse, independent of whether the reed is open
+or closed. The garage opener decides whether that pulse opens, closes or stops the
+door. A single reed reports closed versus not closed; it does not establish travel
+direction or fully-open position, so no directional Open/Close/Stop commands or
+position estimates are exposed.
+
+Concurrent presses, presses within two seconds of completing the previous request,
+and presses while ICT reports the lock output still active are rejected. Failed
+commands are not automatically repeated. Fresh door status is required to send a
+pulse. This guard is not a door-travel timer.
+
+Changing a door to Toggle replaces its lock entity with a new button entity; update
+dashboards and automations for that door to call `button.press`. Its contact entity
+ID and device remain the same. Other doors keep normal lock controls by default.
+Any separately configured output switch for the same relay is independent: remove
+it from the integration if it is no longer needed for direct control.
+
+The raw editor also supports the optional map:
+
+```yaml
+doors:
+  1: Garage
+door_types:
+  1: toggle
+```
+
+Values are `lock` or `toggle`. Existing doors without a mode use `lock`.

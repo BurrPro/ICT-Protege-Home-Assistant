@@ -1,11 +1,12 @@
 from homeassistant.components.lock import LockEntity
-from .const import DOMAIN, CONF_DOORS
+from .const import DOMAIN, CONF_DOORS, DOOR_TYPE_LOCK, get_door_type
 from .entity import ICTEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities([ICTDoor(hass.data[DOMAIN][entry.entry_id], int(k), name)
-                        for k, name in entry.options.get(CONF_DOORS, {}).items()])
+                        for k, name in entry.options.get(CONF_DOORS, {}).items()
+                        if get_door_type(entry.options, int(k)) == DOOR_TYPE_LOCK])
 
 
 class ICTDoor(ICTEntity, LockEntity):

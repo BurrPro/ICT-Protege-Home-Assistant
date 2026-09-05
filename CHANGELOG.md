@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.0 - 2026-09-06
+
+- Add per-door Normal lock / Toggle (timed pulse) configuration for new and existing doors.
+- Toggle buttons use ICT timed Unlock and the controller-defined Lock Activation Time.
+- Preserve door contact feedback and normal controls for unconverted doors.
+- Reject concurrent/repeated presses, stale feedback and activation while the lock output is active.
+- Include door types in raw configuration and clean up replaced/removed controls.
+
 ## 1.8.1 - 2026-09-06
 
 - Log out before closing healthy sessions during reload, unload and temporary validation.

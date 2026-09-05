@@ -48,7 +48,8 @@
           "edit_device": "Edit Device Name",
           "remove_device": "Remove Device",
           "raw_editor": "Advanced: Edit YAML Config",
-          "add_trouble": "Add Trouble Input"
+          "add_trouble": "Add Trouble Input",
+          "configure_door_types": "Configure Door Types"
         }
       },
       "scan_devices": {
@@ -74,11 +75,12 @@
       },
       "add_door": {
         "title": "Add Door",
-        "description": "Enter the ID from the 'Reporting ID' or 'Record' column in Protege.",
+        "description": "Enter the ICT Door record ID. Toggle uses the configured Lock Activation Time and keeps the door contact feedback.",
         "data": {
           "dev_id": "Door ID",
           "name": "Door Name",
-          "next_action": "Next Action"
+          "next_action": "Next Action",
+          "door_type": "Door Type"
         }
       },
       "add_area": {
@@ -202,6 +204,19 @@
         "data": {
           "limit": "Highest record ID to check"
         }
+      },
+      "configure_door_types": {
+        "title": "Configure Door Types",
+        "data": {
+          "door": "Door"
+        }
+      },
+      "door_type": {
+        "title": "Door Type",
+        "description": "Choose how to control {name}. Toggle replaces the lock entity with a momentary button and retains the door contact. ICT controls the pulse duration using Lock Activation Time.",
+        "data": {
+          "door_type": "Door Type"
+        }
       }
     },
     "error": {
@@ -214,7 +229,8 @@
     "abort": {
       "no_devices": "No devices of this type have been configured yet.",
       "cannot_connect": "Could not communicate with the controller. Check connection settings and command ACKs.",
-      "invalid_auth": "Service PIN was rejected."
+      "invalid_auth": "Service PIN was rejected.",
+      "invalid_door_type": "Invalid door type."
     }
   },
   "selector": {
