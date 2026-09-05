@@ -65,15 +65,19 @@ setup and reload the new code; the existing service PIN can remain unchanged.
 
 ## Installation
 
-1. Back up Home Assistant, including the old custom component, before upgrading.
-2. Extract the deployment ZIP. Copy its `custom_components/ict_automation` folder to
-   `/config/custom_components/ict_automation`, replacing the existing component files.
-   Do not copy tests or development dependencies into Home Assistant.
-3. Restart Home Assistant. Confirm the integration reports version 1.9.2 and loads.
-4. Match checksum settings at both ends. Default is 8 Bit Sum; None is available
-   under Configure > Edit Connection Settings. Keep command/status/event ACK settings
-   enabled as documented in README.md.
-5. Review arming feature options, explicit trouble records, and affected automations.
+# Method 1: HACS (Recommended)
+1.  Open **HACS** in Home Assistant.
+2.  Go to **Integrations** > **Custom repositories** (top right menu).
+3.  Paste this repository URL and select **Integration**.
+4.  Click **Download**.
+5.  **Restart Home Assistant**.
+
+# Method 2: Manual
+1.  Download the repository as a ZIP file.
+2.  Extract the `custom_components/ict_automation` folder.
+3.  Copy this folder into your Home Assistant's `/config/custom_components/` directory.
+4.  Restart Home Assistant.
+
 
 ## Acceptance check on the actual installation
 
