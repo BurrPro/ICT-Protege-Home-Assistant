@@ -7,7 +7,8 @@
         "data": {
           "host": "Controller IP Address",
           "port": "Port (Default: 21000)",
-          "password": "Service PIN (User Code)"
+          "password": "Service PIN (User Code)",
+          "checksum": "Checksum Type"
         }
       }
     },
@@ -137,7 +138,8 @@
         "data": {
           "host": "IP Address",
           "port": "Port",
-          "password": "Service PIN"
+          "password": "Service PIN",
+          "checksum": "Checksum Type"
         }
       },
       "scan_doors": {

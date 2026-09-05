@@ -3,6 +3,8 @@ import logging
 import struct
 import socket
 
+from .const import CHECKSUM_NONE, CHECKSUM_8_BIT_SUM, DEFAULT_CHECKSUM
+
 _LOGGER = logging.getLogger(__name__)
 
 PKT_TYPE_COMMAND = 0x00
@@ -10,7 +12,10 @@ PKT_TYPE_DATA = 0x01
 PKT_TYPE_SYSTEM = 0xC0
 
 class ICTClient:
-    def __init__(self, host, port, password):
+    def __init__(self, host, port, password, checksum=DEFAULT_CHECKSUM):
+        if checksum not in (CHECKSUM_NONE, CHECKSUM_8_BIT_SUM):
+            raise ValueError("Unsupported ICT checksum type")
+        self.checksum = checksum
         self.host = host
         self.port = port
         self.service_pin = password
@@ -164,16 +169,22 @@ class ICTClient:
         except: return False
 
     async def _send_raw(self, group, sub, data):
+        await self._send_packet(PKT_TYPE_COMMAND, bytes([group, sub]) + data)
+
+    async def _send_packet(self, packet_type, payload):
         if not self._writer: return
-        payload = bytearray([group, sub]) + data
-        wrapper = bytearray([0x00, 0x00]) + payload 
-        length = 5 + len(wrapper)
-        full = bytearray([0x49, 0x43]) + struct.pack('<H', length) + wrapper
-        full.append(sum(full) % 256)
+        checksum_length = 1 if self.checksum == CHECKSUM_8_BIT_SUM else 0
+        length = 6 + len(payload) + checksum_length
+        full = bytearray(b'IC') + struct.pack('<H', length)
+        full.extend((packet_type, 0x00))
+        full.extend(payload)
+        if checksum_length:
+            full.append(sum(full) & 0xFF)
         try:
             self._writer.write(full)
             await self._writer.drain()
-        except: await self.disconnect()
+        except Exception:
+            await self.disconnect()
 
     async def _listen(self):
         buffer = bytearray()
@@ -189,17 +200,40 @@ class ICTClient:
                         del buffer[0]
                         continue
                     length = struct.unpack('<H', buffer[2:4])[0]
+                    minimum_length = 7 if self.checksum == CHECKSUM_8_BIT_SUM else 6
+                    if length < minimum_length:
+                        _LOGGER.warning("Invalid ICT packet length: %s", length)
+                        del buffer[0]
+                        continue
                     if len(buffer) < length: break
                     packet = buffer[:length]
                     del buffer[:length]
-                    self._handle_packet(packet)
+                    await self._handle_packet(packet)
             except: 
                 await self.disconnect()
                 break
 
-    def _handle_packet(self, packet):
+    async def _handle_packet(self, packet):
+        checksum_length = 1 if self.checksum == CHECKSUM_8_BIT_SUM else 0
+        if (len(packet) < 6 + checksum_length or packet[:2] != b'IC'
+                or struct.unpack('<H', packet[2:4])[0] != len(packet)):
+            return
+        if checksum_length and (sum(packet[:-1]) & 0xFF) != packet[-1]:
+            _LOGGER.warning("Discarding ICT packet with invalid checksum")
+            return
+        if packet[5] != 0:
+            _LOGGER.warning("Unsupported ICT packet format: %s", packet[5])
+            return
+        # Strip only the configured checksum, preserving the last byte in None mode.
+        packet = packet[:-checksum_length] if checksum_length else packet
         try:
             pkt_type = packet[4]
+            if pkt_type == PKT_TYPE_DATA:
+                if not self._parse_data_stream(packet[6:]):
+                    _LOGGER.warning("Discarding malformed ICT data packet")
+                    return
+                # Status and event data require a system ACK, never a command ACK.
+                await self._send_packet(PKT_TYPE_SYSTEM, b'\xff\x00')
             if not self._login_event.is_set():
                 if pkt_type == PKT_TYPE_SYSTEM and len(packet) >= 8:
                     if packet[6] == 0xFF and packet[7] == 0xFF: 
@@ -225,21 +259,26 @@ class ICTClient:
                      self._scan_event.set()
                      return
 
-            if pkt_type == PKT_TYPE_DATA: 
-                data_section = packet[6:-1]
-                self._parse_data_stream(data_section)
         except Exception: pass
 
     def _parse_data_stream(self, data):
+        # Validate all block boundaries before publishing any updates.
+        blocks = []
         i = 0
-        while i < len(data) - 3:
-            type_l = data[i]
-            type_h = data[i+1]
-            length = data[i+2]
-            body = data[i+3 : i+3+length]
-            if type_l == 0xFF and type_h == 0xFF: break
+        while i < len(data):
+            if data[i:i+2] == b'\xff\xff':
+                break
+            if len(data) - i < 3:
+                return False
+            type_l, type_h, length = data[i:i+3]
+            end = i + 3 + length
+            if end > len(data):
+                return False
+            blocks.append((type_l, type_h, data[i+3:end]))
+            i = end
+        for type_l, type_h, body in blocks:
             self._notify_update(type_l, type_h, body)
-            i += 3 + length
+        return True
 
     def _notify_update(self, type_l, type_h, body):
         update = {}

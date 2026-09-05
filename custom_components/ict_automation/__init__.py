@@ -2,7 +2,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er, device_registry as dr
-from .const import DOMAIN, CONF_HOST, CONF_PORT, CONF_PASSWORD, CONF_DOORS, CONF_AREAS, CONF_INPUTS, CONF_OUTPUTS
+from .const import CONF_CHECKSUM, DEFAULT_CHECKSUM, DOMAIN, CONF_HOST, CONF_PORT, CONF_PASSWORD, CONF_DOORS, CONF_AREAS, CONF_INPUTS, CONF_OUTPUTS
 from .ict_library import ICTClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -13,7 +13,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool: return True
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     
-    client = ICTClient(entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data.get(CONF_PASSWORD))
+    client = ICTClient(entry.data[CONF_HOST], entry.data[CONF_PORT], entry.data.get(CONF_PASSWORD),
+        checksum=entry.data.get(CONF_CHECKSUM, DEFAULT_CHECKSUM))
 
     def get_ids(key):
         d = entry.options.get(key, {})

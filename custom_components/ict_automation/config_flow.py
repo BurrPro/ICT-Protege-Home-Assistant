@@ -3,7 +3,8 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector, entity_registry as er
 from .const import (
-    DOMAIN, CONF_HOST, CONF_PORT, CONF_PASSWORD, 
+    DOMAIN, CONF_HOST, CONF_PORT, CONF_PASSWORD,
+    CONF_CHECKSUM, CHECKSUM_NONE, CHECKSUM_8_BIT_SUM, DEFAULT_CHECKSUM,
     CONF_DOORS, CONF_AREAS, CONF_INPUTS, CONF_OUTPUTS,
     CONF_ENABLE_AWAY, CONF_ENABLE_STAY, CONF_ENABLE_NIGHT, CONF_ENABLE_BYPASS
 )
@@ -14,6 +15,16 @@ import asyncio
 
 _LOGGER = logging.getLogger(__name__)
 
+def checksum_selector():
+    return selector.SelectSelector(selector.SelectSelectorConfig(
+        options=[
+            {"value": CHECKSUM_NONE, "label": "None"},
+            {"value": CHECKSUM_8_BIT_SUM, "label": "8 Bit Sum"},
+        ],
+        mode=selector.SelectSelectorMode.DROPDOWN,
+    ))
+
+
 class ICTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     async def async_step_user(self, user_input=None):
@@ -23,6 +34,7 @@ class ICTConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_HOST): str,
             vol.Required(CONF_PORT, default=21000): int,
             vol.Required(CONF_PASSWORD): str,
+            vol.Required(CONF_CHECKSUM, default=DEFAULT_CHECKSUM): checksum_selector(),
         }))
 
     @staticmethod
@@ -256,7 +268,8 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
         if DOMAIN in self.hass.data and self._config_entry.entry_id in self.hass.data[DOMAIN]:
             client = self.hass.data[DOMAIN][self._config_entry.entry_id]
         if not client:
-            client = ICTClient(self.data[CONF_HOST], self.data[CONF_PORT], self.data[CONF_PASSWORD])
+            client = ICTClient(self.data[CONF_HOST], self.data[CONF_PORT], self.data[CONF_PASSWORD],
+                checksum=self.data.get(CONF_CHECKSUM, DEFAULT_CHECKSUM))
             if not await client.start_temp_connection(): return self.async_abort(reason="cannot_connect")
             is_temp = True
         if not await client.authenticate():
@@ -296,6 +309,7 @@ class ICTOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(CONF_HOST, default=self.data.get(CONF_HOST)): str,
             vol.Required(CONF_PORT, default=self.data.get(CONF_PORT)): int,
             vol.Required(CONF_PASSWORD, default=self.data.get(CONF_PASSWORD)): str,
+            vol.Required(CONF_CHECKSUM, default=self.data.get(CONF_CHECKSUM, DEFAULT_CHECKSUM)): checksum_selector(),
         })
         return self.async_show_form(step_id="configure_connection", data_schema=schema)
 

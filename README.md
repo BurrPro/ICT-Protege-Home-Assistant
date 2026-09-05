@@ -35,7 +35,7 @@ Before installing, you must configure the **Automation Service** on your ICT Con
 | :--- | :--- | :--- |
 | **IP Port** | `21000` | Default automation port |
 | **Encryption Level** | `None` | Currently supported mode |
-| **Checksum Type** | `8 Bit Sum` | Required for protocol matching |
+| **Checksum Type** | `8 Bit Sum` | Default; `None` is also supported when selected in Home Assistant |
 
 ### Recommended Options (Checkboxes)
 Refer to the screenshot below for the tested configuration:
@@ -43,7 +43,11 @@ Refer to the screenshot below for the tested configuration:
 * [ ] **Numbers are Big Endian** (MUST BE UNCHECKED - Critical)
 * [x] **Allow Status Requests When Not Logged In**
 * [x] **Ack Commands**
-* [ ] **Expect Ack For Status Monitoring** (Leave unchecked to prevent connection drops)
+* [x] **Expect Ack For Status Monitoring**
+* [ ] **Resend Status Monitoring If No Ack After 5 Attempts**
+* [x] **Expect Ack For Events**
+* [ ] **Resend Events If No Ack After 5 Attempts**
+* [ ] **User Logon Lock Out Timer If Incorrect PIN Is Supplied**
 
 > **⚠️ Important:** The "Numbers are Big Endian" box must be **unchecked**. This integration uses Little Endian byte order. If checked, IDs will be interpreted incorrectly.
 
@@ -73,6 +77,8 @@ Refer to the screenshot below for the tested configuration:
 3.  Enter your connection details:
     * **Host:** IP Address of your ICT Controller (e.g., `192.168.1.50`).
     * **Port:** `21000`.
+    * **Checksum Type:** `8 Bit Sum` (default), or `None`. Match the controller service setting.
+      Existing entries default to `8 Bit Sum`; change this under **Configure > Edit Connection Settings**.
     * **Service PIN:** A valid User PIN from your ICT system.
 
 > **🔐 About the Service PIN:**
@@ -112,4 +118,4 @@ By default, the integration expects the **Database Record ID** (often labeled as
     * Check the **"Numbers are Big Endian"** setting in the ICT Services menu. It must be **OFF**.
 
 * **Status updates are slow:**
-    * The integration relies on the controller pushing updates. Ensure "Ack Commands" is enabled in the ICT Service settings so the controller knows we are listening.
+    * The integration relies on the controller pushing updates. Enable the acknowledgement settings listed above; the integration acknowledges incoming status and event data.
