@@ -1,108 +1,61 @@
-import logging
+"""Area controls never disarm the separate 24-hour portion."""
 from homeassistant.components.alarm_control_panel import (
-    AlarmControlPanelEntity,
-    AlarmControlPanelEntityFeature,
-    CodeFormat,
+    AlarmControlPanelEntity, AlarmControlPanelEntityFeature, AlarmControlPanelState, CodeFormat,
 )
+from homeassistant.exceptions import HomeAssistantError
+from .const import DOMAIN, CONF_AREAS, CONF_ENABLE_AWAY, CONF_ENABLE_STAY, CONF_ENABLE_BYPASS
+from .entity import ICTEntity
 
-# FIXED: Constants defined locally to prevent ImportError on HA 2025.1+
-# These were removed from homeassistant.const
-STATE_ALARM_DISARMED = "disarmed"
-STATE_ALARM_ARMED_HOME = "armed_home"
-STATE_ALARM_ARMED_AWAY = "armed_away"
-STATE_ALARM_ARMED_NIGHT = "armed_night"
-STATE_ALARM_TRIGGERED = "triggered"
-STATE_ALARM_ARMING = "arming"
+AREA_DISARM = 0x00
+AREA_ARM_NORMAL = 0x03
+AREA_ARM_FORCE = 0x04
+AREA_ARM_STAY = 0x05
 
-from homeassistant.core import callback
-from homeassistant.helpers.entity import DeviceInfo
-from .const import (
-    DOMAIN, CONF_AREAS, 
-    CONF_ENABLE_AWAY, CONF_ENABLE_STAY, CONF_ENABLE_NIGHT, CONF_ENABLE_BYPASS
-)
-
-_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     client = hass.data[DOMAIN][entry.entry_id]
-    data = entry.options.get(CONF_AREAS, {})
-    
-    # Read User Preferences for Arming Modes (Default to True if not set)
-    enable_away = entry.options.get(CONF_ENABLE_AWAY, True)
-    enable_stay = entry.options.get(CONF_ENABLE_STAY, True)
-    enable_night = entry.options.get(CONF_ENABLE_NIGHT, True)
-    enable_bypass = entry.options.get(CONF_ENABLE_BYPASS, False)
-
     async_add_entities([
-        ICTArea(client, int(k), v, enable_away, enable_stay, enable_night, enable_bypass) 
-        for k, v in data.items()
+        ICTArea(client, int(k), name, entry.options.get(CONF_ENABLE_AWAY, True),
+                entry.options.get(CONF_ENABLE_STAY, True), entry.options.get(CONF_ENABLE_BYPASS, False))
+        for k, name in entry.options.get(CONF_AREAS, {}).items()
     ])
 
-class ICTArea(AlarmControlPanelEntity):
-    def __init__(self, client, area_id, name, enable_away, enable_stay, enable_night, enable_bypass):
-        self._client = client
-        self._area_id = area_id
-        self._attr_name = name
-        self._attr_unique_id = f"ict_area_{area_id}"
-        self._attr_code_format = CodeFormat.NUMBER
-        self._state = None
-        
-        # Build Supported Features based on Config
-        features = AlarmControlPanelEntityFeature(0)
-        
-        if enable_away: features |= AlarmControlPanelEntityFeature.ARM_AWAY
-        if enable_stay: features |= AlarmControlPanelEntityFeature.ARM_HOME
-        if enable_night: features |= AlarmControlPanelEntityFeature.ARM_NIGHT
-        if enable_bypass: features |= AlarmControlPanelEntityFeature.ARM_VACATION # We map Bypass to Vacation for HA compatibility
 
-        features |= AlarmControlPanelEntityFeature.TRIGGER
+class ICTArea(ICTEntity, AlarmControlPanelEntity):
+    _attr_code_format = CodeFormat.NUMBER
+    _attr_code_arm_required = True
+    _attr_alarm_state = None
+
+    def __init__(self, client, record_id, name, away, stay, bypass):
+        super().__init__(client, record_id, name, "area")
+        features = AlarmControlPanelEntityFeature(0)
+        if away:
+            features |= AlarmControlPanelEntityFeature.ARM_AWAY
+        if stay:
+            features |= AlarmControlPanelEntityFeature.ARM_HOME
+        if bypass:
+            features |= AlarmControlPanelEntityFeature.ARM_CUSTOM_BYPASS
         self._attr_supported_features = features
 
-    @property
-    def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, f"area_{self._area_id}")},
-            name=self._attr_name,
-            manufacturer="Integrated Control Technology",
-            model="Protege Area",
-            via_device=(DOMAIN, "ict_controller"),
-        )
+    def _apply_update(self, update):
+        state = update["alarm_state"]
+        self._attr_alarm_state = AlarmControlPanelState(state) if state else None
+        self._attr_extra_state_attributes = {key: update[key] for key in
+            ("area_state", "status_text", "tamper_24h_state", "force_armed", "instant_armed", "stay_armed")}
 
-    async def async_added_to_hass(self):
-        self._client.register_callback(self._handle_update)
+    async def _area_command(self, command, code):
+        if not code:
+            raise HomeAssistantError("Enter a user PIN to control the area")
+        await self._command(2, command, code)
 
-    @callback
-    def _handle_update(self, update):
-        if update["type"] == "area" and update["id"] == self._area_id:
-            if update["alarm"]: self._state = STATE_ALARM_TRIGGERED
-            elif update["armed"]: self._state = STATE_ALARM_ARMED_AWAY
-            else: self._state = STATE_ALARM_DISARMED
-            self.async_write_ha_state()
+    async def async_alarm_disarm(self, code=None):
+        await self._area_command(AREA_DISARM, code)
 
-    @property
-    def state(self): return self._state
+    async def async_alarm_arm_away(self, code=None):
+        await self._area_command(AREA_ARM_NORMAL, code)
 
-    async def async_alarm_disarm(self, code=None) -> None:
-        if not code: return
-        await self._client.send_command_with_pin(0x02, 0x02, self._area_id, code)
+    async def async_alarm_arm_home(self, code=None):
+        await self._area_command(AREA_ARM_STAY, code)
 
-    async def async_alarm_arm_away(self, code=None) -> None:
-        if not code: return
-        # Standard Force Arm
-        await self._client.send_command_with_pin(0x02, 0x01, self._area_id, code)
-
-    async def async_alarm_arm_home(self, code=None) -> None:
-        if not code: return
-        # Stay Arm (Protege "Stay" Mode)
-        await self._client.send_command_with_pin(0x02, 0x03, self._area_id, code)
-
-    async def async_alarm_arm_night(self, code=None) -> None:
-        if not code: return
-        # Night Arm (Protege "Instant" Mode usually maps well here, or Sleep)
-        # Using 0x04 (Instant/Sleep) based on standard automation protocols
-        await self._client.send_command_with_pin(0x02, 0x04, self._area_id, code)
-        
-    async def async_alarm_arm_vacation(self, code=None) -> None:
-        # We use this for "Force Arm" or specific bypass modes if enabled
-        if not code: return
-        await self._client.send_command_with_pin(0x02, 0x01, self._area_id, code)
+    async def async_alarm_arm_custom_bypass(self, code=None):
+        await self._area_command(AREA_ARM_FORCE, code)

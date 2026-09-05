@@ -1,121 +1,120 @@
-<p align="center">
-  <img src="custom_components/ict_automation/icon.png" width="150" height="150" alt="ICT Automation Icon">
-</p>
-
 # ICT Protege Automation for Home Assistant
 
-A custom integration to control **ICT Protege WX** and **Protege GX** systems via Home Assistant.
+Version 1.8.0. A local TCP integration for the ICT WX/GX Automation and Control service.
+Requires Home Assistant 2024.11 or later.
 
-This integration connects directly to the ICT Controller's **Automation Service** (TCP Port 21000), allowing for real-time status updates and control of Doors, Areas, Inputs, and Outputs.
+## Controller service settings
 
-## Features
+| Setting | Value |
+| --- | --- |
+| IP Port | 21000 (or the port configured in Home Assistant) |
+| Encryption | None |
+| Checksum | 8 Bit Sum (default), or None; both ends must match |
+| Numbers are Big Endian | Off (little endian) |
+| Allow Status Requests When Not Logged In | On |
+| User Logon Lock Out Timer If Incorrect PIN Is Supplied | Off, matching the supplied service configuration |
+| Ack Commands | On |
+| Expect Ack For Status Monitoring | On |
+| Resend Status Monitoring If No Ack After 5 Attempts | Off |
+| Expect Ack For Events | On |
+| Resend Events If No Ack After 5 Attempts | Off |
 
-* **🚪 Doors:**
-    * Lock and Unlock controls.
-    * Real-time status: Open/Closed and Locked/Unlocked.
-* **🛡️ Areas:**
-    * Arm (Away) and Disarm controls.
-    * Real-time status: Armed/Disarmed and Alarm Active.
-* **🔌 Inputs & Troubles:**
-    * Monitors physical state (Open/Closed).
-    * **Automatic Trouble Detection:** Automatically creates a secondary "Trouble" sensor for every input to monitor tampering, short circuits, or cut wires.
-    * **Bypassing:** Includes a dropdown select to Bypass/Unbypass inputs directly from HA.
-* **💡 Outputs:**
-    * Turn PGMs and other outputs On/Off.
+The integration validates incoming checksums, acknowledges unsolicited data, and
+matches requested status replies to the requested record type and ID. Events are
+acknowledged if received; this release does not create Home Assistant event entities
+or enable an event subscription.
 
----
+## Install or upgrade
 
-## ⚙️ ICT Controller Configuration (Prerequisites)
+See [DEPLOYMENT.md](DEPLOYMENT.md) for upgrade changes and a short acceptance check.
 
-Before installing, you must configure the **Automation Service** on your ICT Controller. This is found under **System > Services > Automation** (or similar depending on your WX/GX version).
+1. Back up the existing integration folder and Home Assistant configuration.
+2. Copy `custom_components/ict_automation` into Home Assistant's `custom_components`
+   directory, replacing the previous integration files, or update through HACS after
+   this version has been published to your repository.
+3. Restart Home Assistant. New installations use **Settings > Devices & Services >
+   Add Integration > ICT Protege Automation**.
+4. Enter the controller host, port, service PIN and checksum selection. Existing
+   entries without a checksum setting use **8 Bit Sum**.
+5. Use **Configure** to add or scan records and choose arming features. Connection
+   settings can be changed under **Edit Connection Settings**.
 
-**Match these settings exactly** to ensure the integration can communicate with your controller:
+Use a service PIN with permission to monitor the configured records. Controls use
+that PIN for doors, outputs and input bypass; area controls require the PIN entered
+in the alarm panel. PINs must contain 1-6 ASCII digits. Invalid codes are rejected,
+never silently truncated or cleaned up.
 
-| Setting | Value | Note |
-| :--- | :--- | :--- |
-| **IP Port** | `21000` | Default automation port |
-| **Encryption Level** | `None` | Currently supported mode |
-| **Checksum Type** | `8 Bit Sum` | Default; `None` is also supported when selected in Home Assistant |
+The service connection logs in for monitoring. Each control transaction confirms
+logout, the requested user's login and the control ACK, reads status, then restores
+the service login and subscriptions. An ACK confirms acceptance for processing;
+entity feedback always comes from controller status. Rejected commands raise a Home
+Assistant action error. A timeout disconnects the session and is never treated as
+success or automatically retried as a control command.
 
-### Recommended Options (Checkboxes)
-Refer to the screenshot below for the tested configuration:
+## Entities and area controls
 
-* [ ] **Numbers are Big Endian** (MUST BE UNCHECKED - Critical)
-* [x] **Allow Status Requests When Not Logged In**
-* [x] **Ack Commands**
-* [x] **Expect Ack For Status Monitoring**
-* [ ] **Resend Status Monitoring If No Ack After 5 Attempts**
-* [x] **Expect Ack For Events**
-* [ ] **Resend Events If No Ack After 5 Attempts**
-* [ ] **User Logon Lock Out Timer If Incorrect PIN Is Supplied**
+- Doors: lock and **latched unlock**, plus a contact sensor. Latched unlock retains
+  the previous version's behaviour and does not automatically relock.
+- Areas: Away = normal arm; Home/Stay = stay arm; Disarm = normal area disarm only.
+  These actions do not issue the separate 24-hour disarm commands.
+- Optional Force Arm uses Home Assistant's **Custom Bypass** action. Enable it under
+  **Configure Arming Modes**. Force-armed feedback remains Away or Home according to
+  the controller's actual armed/partial state, with a `force_armed` attribute.
+- Night, Vacation and Trigger are not exposed. The previous mappings were incorrect;
+  ICT Instant arming is not assumed to mean Home/Night arming.
+- Area feedback distinguishes Away, Home, exit delay (`arming`), entry delay
+  (`pending`), disarm delay and triggered. Waiting-for-input/code conditions report
+  unknown alarm state with a `status_text` reason instead of falsely claiming armed.
+- Area attributes include `tamper_24h_state`, `force_armed`, `instant_armed`,
+  `stay_armed`, `area_state` and `status_text`. No 24-hour disarm control is exposed.
+- Outputs: on/off status and controls.
+- Physical inputs: status sensor and controller-confirmed bypass selector.
+- Trouble inputs: independently configured status sensors. A trouble record's ID
+  is not inferred from a physical input ID.
 
-> **⚠️ Important:** The "Numbers are Big Endian" box must be **unchecked**. This integration uses Little Endian byte order. If checked, IDs will be interpreted incorrectly.
+Entities begin unknown/unavailable until their first valid status. Connection loss
+clears cached status, and records without a fresh status for 180 seconds become
+unavailable (checked on connection/heartbeat updates). Heartbeats check the service
+and a periodic status sweep refreshes records. The first 250 configured records are
+subscribed for push updates; additional records use polling. A full sweep can take
+longer on large or slow installations.
 
----
+## Record configuration and scanning
 
-## 📥 Installation
+Use the controller's database record/reporting IDs. If `ACPUseDisplayOrder = true`
+is explicitly configured on the controller, use its display-order references.
+Trouble inputs have their own **Add / Edit / Remove / Scan Trouble Inputs** options.
+**Scan All** scans doors, areas, physical inputs and outputs; troubles are scanned
+separately so they are not confused with physical inputs.
 
-### Method 1: HACS (Recommended)
-1.  Open **HACS** in Home Assistant.
-2.  Go to **Integrations** > **Custom repositories** (top right menu).
-3.  Paste this repository URL and select **Integration**.
-4.  Click **Download**.
-5.  **Restart Home Assistant**.
+Scans check every ID up to the selected limit, including beyond gaps. Only a matching
+status response confirms existence; an invalid-index NACK skips that record. A
+connection/authentication failure stops the scan instead of inventing records.
+Large sparse scans take longer than earlier versions, which stopped after five misses.
 
-### Method 2: Manual
-1.  Download the repository as a ZIP file.
-2.  Extract the `custom_components/ict_automation` folder.
-3.  Copy this folder into your Home Assistant's `/config/custom_components/` directory.
-4.  Restart Home Assistant.
+The raw editor accepts mappings of positive record IDs to names:
 
----
+```yaml
+doors:
+  1: Front Door
+areas:
+  1: Main Area
+inputs:
+  12: Front Contact
+outputs:
+  3: External Light
+troubles:
+  7: Controller Trouble
+```
 
-## 🔧 Configuration
+## Development validation
 
-1.  Go to **Settings > Devices & Services > Add Integration**.
-2.  Search for **"ICT Protege Automation"**.
-3.  Enter your connection details:
-    * **Host:** IP Address of your ICT Controller (e.g., `192.168.1.50`).
-    * **Port:** `21000`.
-    * **Checksum Type:** `8 Bit Sum` (default), or `None`. Match the controller service setting.
-      Existing entries default to `8 Bit Sum`; change this under **Configure > Edit Connection Settings**.
-    * **Service PIN:** A valid User PIN from your ICT system.
+```text
+python -m pip install -r requirements-dev.txt
+python -B -m unittest discover -s tests -v
+```
 
-> **🔐 About the Service PIN:**
-> The PIN you enter here is used to authenticate the connection. This user **must have permission** to control the Doors, Areas, and Outputs you intend to use. If the user does not have "Door Control" permissions in Protege, Home Assistant will be unable to unlock doors.
-
----
-
-## 🔎 Finding Device IDs
-
-When adding devices (Doors, Areas, etc.) to the integration, you must enter the correct **ID**.
-
-### Method 1: The Default Way (Recommended)
-By default, the integration expects the **Database Record ID** (often labeled as "Reporting ID").
-1.  Open Protege WX/GX.
-2.  Go to **Programming > [Doors/Areas/Inputs]**.
-3.  Look for the column labeled **Record**, **ID**, or **Reporting ID**.
-4.  Enter that specific number into Home Assistant.
-    * *Example:* If your front door is Record `12`, enter `12` (even if it is the first item in the list).
-
-### Method 2: The "Display Order" Way
-**Only use this method** if you have explicitly added the command `ACPUseDisplayOrder = true` to your Controller's command string settings.
-1.  Open Protege WX/GX.
-2.  Ignore the ID column.
-3.  Count the rows from the top of the list (1, 2, 3...).
-4.  Enter the **Row Number** into Home Assistant.
-
----
-
-## 📝 Usage & Troubleshooting
-
-* **"Authentication Failed" Error:**
-    * Ensure the PIN is correct.
-    * Ensure the user associated with that PIN has valid permissions in Protege.
-    * Check that no other system (like a DVR or second integration) is blocking the Automation Port.
-
-* **Inputs show as "Closed" but are actually Open:**
-    * Check the **"Numbers are Big Endian"** setting in the ICT Services menu. It must be **OFF**.
-
-* **Status updates are slow:**
-    * The integration relies on the controller pushing updates. Enable the acknowledgement settings listed above; the integration acknowledges incoming status and event data.
+Tests use a deterministic controller transport simulator and small Home Assistant
+API doubles for offline platform, flow and registry tests. They do not represent a
+live controller test or a complete Home Assistant runtime test. No PINs or raw
+login packets are logged by the integration.

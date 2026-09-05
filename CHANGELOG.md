@@ -1,0 +1,26 @@
+# Changelog
+
+## 1.8.0 - 2026-09-06
+
+- Correct normal disarm, Away, Stay and Force Arm command mappings so normal area
+  controls do not send 24-hour disarm commands.
+- Decode actual area mode, delay states, failure reasons and separate 24-hour state;
+  use Home Assistant's modern alarm state API.
+- Expose optional Force Arm as Custom Bypass; remove unsupported Night, Vacation
+  and Trigger actions.
+- Serialize all service requests and require confirmed login/command responses;
+  correlate status replies by type and ID, surface NACKs, and disconnect on timeout
+  without retrying control commands.
+- Restore service login and monitoring after user controls; reconnect and resubscribe
+  after socket loss without cancelling the supervisor.
+- Replay initial cached status, unsubscribe removed entities, isolate callback errors
+  and report unavailable for disconnected or stale records.
+- Correct trouble status decoding and configure trouble inputs independently.
+- Drive bypass selection from actual status instead of optimistic command feedback.
+- Scan through ID gaps, reject unrelated responses, fix swapped Scan All limits, and
+  validate setup/PIN/port/record inputs.
+- Scope registry identifiers per configuration entry and migrate existing entity IDs.
+- Retain configurable None/8 Bit Sum framing, with 8 Bit Sum the default; distinguish
+  requested status replies from unsolicited data acknowledgements.
+- Add offline protocol, lifecycle, platform, flow and registry regression tests,
+  deployment guidance and a Home Assistant 2024.11 minimum version declaration.

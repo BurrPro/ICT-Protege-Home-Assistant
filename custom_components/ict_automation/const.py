@@ -8,7 +8,7 @@ CONF_DOORS = "doors"
 CONF_AREAS = "areas"
 CONF_INPUTS = "inputs"
 CONF_OUTPUTS = "outputs"
-# Troubles are now part of inputs, but we keep the key just in case of legacy usage
+# Trouble inputs are independent ICT records and must be configured explicitly.
 CONF_TROUBLES = "troubles" 
 
 # New Constants for Arming Modes

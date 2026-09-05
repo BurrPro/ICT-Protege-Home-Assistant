@@ -14,6 +14,7 @@ package.__path__ = [str(ROOT)]
 sys.modules[PACKAGE] = package
 spec = importlib.util.spec_from_file_location(PACKAGE + ".ict_library", ROOT / "ict_library.py")
 module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
 spec.loader.exec_module(module)
 
 
@@ -52,8 +53,8 @@ class ServiceProtocolTests(unittest.IsolatedAsyncioTestCase):
             client = self.client(mode)
             updates = []
             client.register_callback(updates.append)
-            # Door status: record 1, unlocked, open. Final byte must survive None mode.
-            payload = bytes.fromhex("000106010000000101")
+            # Door status: record 1, unlocked, open, with two reserved bytes.
+            payload = bytes.fromhex("0001080100000001010000")
             await client._handle_packet(frame(payload, mode != "none"))
             self.assertEqual(updates, [{"type": "door", "id": 1, "locked": False, "open": True}])
             self.assertEqual(client._writer.packets, [frame(b"\xff\x00", mode != "none", 0xc0)])
@@ -62,7 +63,7 @@ class ServiceProtocolTests(unittest.IsolatedAsyncioTestCase):
         client = self.client()
         updates = []
         client.register_callback(updates.append)
-        packet = bytearray(frame(bytes.fromhex("000106010000000101")))
+        packet = bytearray(frame(bytes.fromhex("0001080100000001010000")))
         packet[-1] ^= 1
         await client._handle_packet(packet)
         await client._handle_packet(frame(bytes.fromhex("00010601")))
@@ -86,7 +87,7 @@ class ServiceProtocolTests(unittest.IsolatedAsyncioTestCase):
             client._connected = True
             client._reader = asyncio.StreamReader()
             listener = asyncio.create_task(client._listen())
-            packet = frame(bytes.fromhex("000106010000000101"), mode != "none")
+            packet = frame(bytes.fromhex("0001080100000001010000"), mode != "none")
             client._reader.feed_data(b"noiseIC\x00\x00" + packet[:3])
             await asyncio.sleep(0)
             self.assertEqual(writer.packets, [])
