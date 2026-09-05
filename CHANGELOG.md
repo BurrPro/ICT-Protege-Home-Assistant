@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.1 - 2026-09-06
+
+- Do not block a Toggle door when cached lock feedback still shows the timed output
+  active after its pulse has ended.
+- Retain the two-second duplicate-press guard and fresh-status availability check.
+
 ## 1.9.0 - 2026-09-06
 
 - Add per-door Normal lock / Toggle (timed pulse) configuration for new and existing doors.

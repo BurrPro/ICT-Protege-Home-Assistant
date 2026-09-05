@@ -1,6 +1,6 @@
 # ICT Protege Automation for Home Assistant
 
-Version 1.9.0. A local TCP integration for the ICT WX/GX Automation and Control service.
+Version 1.9.1. A local TCP integration for the ICT WX/GX Automation and Control service.
 Requires Home Assistant 2024.11 or later.
 
 ## Controller service settings
@@ -139,9 +139,9 @@ direction or fully-open position, so no directional Open/Close/Stop commands or
 position estimates are exposed.
 
 Concurrent presses, presses within two seconds of completing the previous request,
-and presses while ICT reports the lock output still active are rejected. Failed
-commands are not automatically repeated. Fresh door status is required to send a
-pulse. This guard is not a door-travel timer.
+are rejected. Failed commands are not automatically repeated. Fresh door status is
+required to send a pulse. A transient unlocked status caused by the activation pulse
+does not block later presses. This guard is not a door-travel timer.
 
 Changing a door to Toggle replaces its lock entity with a new button entity; update
 dashboards and automations for that door to call `button.press`. Its contact entity

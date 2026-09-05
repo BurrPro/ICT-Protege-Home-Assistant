@@ -1,4 +1,10 @@
-# Deploying ICT Protege Automation 1.9.0
+# Deploying ICT Protege Automation 1.9.1
+
+## Toggle pulse feedback fix
+
+Version 1.9.1 prevents transient lock-output feedback from disabling the Toggle
+button after a successful pulse. The two-second duplicate-press guard remains.
+Replace the component and restart Home Assistant to load the fix.
 
 ## Toggle door type
 

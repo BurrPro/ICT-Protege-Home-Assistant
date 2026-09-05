@@ -34,8 +34,6 @@ class ICTDoorToggle(ICTEntity, ButtonEntity):
             raise HomeAssistantError("Door status is unavailable; toggle was not sent")
         if self._press_pending or time.monotonic() < self._next_press:
             raise HomeAssistantError("Please wait before toggling the door again")
-        if not self._client.cache[("door", self._record_id)]["locked"]:
-            raise HomeAssistantError("Door lock output is already active; wait for it to release")
         # Set the guard before awaiting so concurrent presses cannot queue pulses.
         self._press_pending = True
         try:

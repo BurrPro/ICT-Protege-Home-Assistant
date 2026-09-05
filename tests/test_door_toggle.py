@@ -52,13 +52,18 @@ class DoorToggleTests(unittest.IsolatedAsyncioTestCase):
         await entity.async_press()
         self.assertEqual(client.send_command.await_count,2)
 
-    async def test_unavailable_and_active_output_do_not_pulse(self):
+    async def test_stale_active_output_feedback_does_not_block_pulse(self):
         client = self.client()
         entity = button.ICTDoorToggle(client,1,'Garage')
+        # The status read immediately after timed Unlock can capture the output
+        # during its pulse. That transient value must not disable later presses.
         client.cache['door',1]['locked'] = False
-        with self.assertRaisesRegex(ha_stub.HAError,'already active'):
-            await entity.async_press()
-        client.cache['door',1]['locked'] = True
+        await entity.async_press()
+        client.send_command.assert_awaited_once_with(1,1,1)
+
+    async def test_unavailable_status_does_not_pulse(self):
+        client = self.client()
+        entity = button.ICTDoorToggle(client,1,'Garage')
         client._last_seen['door',1] -= 181
         with self.assertRaisesRegex(ha_stub.HAError,'unavailable'):
             await entity.async_press()
