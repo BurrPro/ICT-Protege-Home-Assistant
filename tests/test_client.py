@@ -35,7 +35,10 @@ class PanelWriter:
         reply = frame(b'\xff\x00', checksum, 0xc0)
         if self.panel.silent:
             return
-        if (group, sub) == (0, 2):
+        if (group, sub) in self.panel.nack_once:
+            code = self.panel.nack_once.pop((group, sub))
+            reply = frame(b'\xff\xff' + struct.pack('<H', code), checksum, 0xc0)
+        elif (group, sub) == (0, 2):
             if self.panel.retained_login:
                 reply = frame(b'\xff\xff\x00\x03', checksum, 0xc0)
             elif payload[2:] != b'\x01\x02\x03\x04\xff':
@@ -88,6 +91,7 @@ class Panel:
         self.area_state, self.area_flags = 0, 0
         self.silent = self.reject_control = False
         self.retained_login = self.sticky_login = False
+        self.nack_once = {}
 
     async def connect(self, *args):
         reader = asyncio.StreamReader()
@@ -135,6 +139,51 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(module.ICTNack, 'Area control denied'):
             await self.client.send_command_with_pin(2, 3, 1, '1234')
         self.assertEqual(self.client.cache['area', 1]['alarm_state'], 'disarmed')
+
+    async def test_control_nack_names_the_rejected_operation(self):
+        await self.client.start()
+        self.panel.nack_once[1, 1] = 0x0120
+        with self.assertRaisesRegex(module.ICTNack, 'Timed unlock door 1: Invalid command'):
+            await self.client.send_command(1, 1, 1)
+        self.assertEqual(sum((g, s) == (1, 1) for g, s, _ in self.panel.commands), 1)
+        self.assertTrue(self.client.available)
+
+    async def test_feedback_nack_does_not_turn_confirmed_control_into_failure(self):
+        self.client.set_configuration([1], [], [], [])
+        await self.client.start()
+        self.panel.nack_once[1, 0x80] = 0x0120
+        with self.assertLogs(module._LOGGER, level='WARNING') as logs:
+            self.assertTrue(await self.client.send_command(1, 1, 1))
+        self.assertTrue(any('feedback refresh failed' in line for line in logs.output))
+        self.assertEqual(sum((g, s) == (1, 1) for g, s, _ in self.panel.commands), 1)
+        self.assertTrue(self.client.available)
+
+    async def test_service_session_control_does_not_cycle_login(self):
+        self.client.set_configuration([1], [], [], [])
+        await self.client.start()
+        before = len(self.panel.commands)
+        self.assertTrue(await self.client.send_command(1, 1, 1))
+        transaction = [(g, s) for g, s, _ in self.panel.commands[before:]]
+        self.assertEqual(transaction, [(1, 1), (1, 0x80)])
+        self.assertTrue(self.panel.writers[-1].logged_in)
+
+    async def test_restore_nack_recovers_without_failing_confirmed_control(self):
+        self.client.set_configuration([1], [], [], [])
+        await self.client.start()
+        self.panel.nack_once[0, 5] = 0x0120
+        with self.assertLogs(module._LOGGER, level='WARNING') as logs:
+            self.assertTrue(await self.client.send_command_with_pin(1, 1, 1, '1234'))
+        self.assertTrue(any('Monitor door 1: Invalid command' in line for line in logs.output))
+        self.assertEqual(sum((g, s) == (1, 1) for g, s, _ in self.panel.commands), 1)
+        self.assertFalse(self.client.available)
+
+    async def test_restore_resubscribes_without_refreshing_every_record(self):
+        self.client.set_configuration([1, 2], [], [], [])
+        await self.client.start()
+        before = sum(sub == 0x80 for _, sub, _ in self.panel.commands)
+        await self.client.send_command_with_pin(1, 1, 1, '1234')
+        after = sum(sub == 0x80 for _, sub, _ in self.panel.commands)
+        self.assertEqual(after - before, 1)
 
     async def test_timeout_closes_session_without_retry(self):
         await self.client.start()

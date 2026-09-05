@@ -23,8 +23,9 @@ class ICTError(Exception):
 
 
 class ICTNack(ICTError):
-    def __init__(self, code):
+    def __init__(self, code, operation=None):
         self.code = code
+        self.operation = operation
         descriptions = {
             0x0120: "Invalid command", 0x0121: "Invalid record index",
             0x0300: "User already logged in", 0x0301: "User logged out",
@@ -32,7 +33,8 @@ class ICTNack(ICTError):
             0x030A: "Door group control denied", 0x030F: "Door control denied",
             0x040E: "Bypass not allowed", 0x0869: "Area already in requested state",
         }
-        super().__init__(descriptions.get(code, f"Controller rejected command ({code:#06x})"))
+        description = descriptions.get(code, f"Controller rejected command ({code:#06x})")
+        super().__init__(f"{operation}: {description}" if operation else description)
 
 
 def encode_pin(pin):
@@ -201,7 +203,7 @@ class ICTClient:
                     break
                 await asyncio.sleep(0.02)
 
-    async def _update_monitoring(self):
+    async def _update_monitoring(self, refresh=True):
         for number, (_, group, idx) in enumerate(self.monitored_items):
             try:
                 if number < 250:
@@ -209,7 +211,8 @@ class ICTClient:
                     # status request. Additional items use the safety poll.
                     payload = struct.pack("<HI", group, idx) + b"\x01\x00"
                     await self._request(0, 5, payload)
-                await self._status(group, idx)
+                if refresh:
+                    await self._status(group, idx)
             except ICTNack as err:
                 if err.code != 0x0121:
                     raise
@@ -235,7 +238,21 @@ class ICTClient:
                 raise
 
     async def send_command(self, group, sub, index_id):
-        return await self.send_command_with_pin(group, sub, index_id, self.service_pin)
+        async with self._lock:
+            if not self.available:
+                raise ICTError("ICT controller is unavailable")
+            # Door/output controls can use the authenticated service session.
+            # Keep that session and its subscriptions intact instead of cycling
+            # through logout/login around every control.
+            await self._request(group, sub, struct.pack("<I", index_id))
+            try:
+                await self._status(group, index_id)
+            except ICTError as err:
+                # The control ACK is definitive. Do not report an already accepted
+                # action as failed because the follow-up feedback read was rejected.
+                _LOGGER.warning(
+                    "ICT command was accepted, but its feedback refresh failed: %s", err)
+        return True
 
     async def send_command_with_pin(self, group, sub, index_id, pin_code):
         pin = encode_pin(pin_code)
@@ -244,13 +261,21 @@ class ICTClient:
                 raise ICTError("ICT controller is unavailable")
             await self._request(0, 3, b"")
             error = None
+            command_confirmed = False
             try:
                 # A command is sent only after this exact user's login is ACKed.
                 await self._request(0, 2, pin)
                 await self._request(group, sub, struct.pack("<I", index_id))
+                command_confirmed = True
                 await self._status(group, index_id)
             except ICTError as err:
-                error = err
+                if command_confirmed:
+                    # The controller has already accepted the control. A failed
+                    # feedback read must not tell HA that the action itself failed.
+                    _LOGGER.warning(
+                        "ICT command was accepted, but its feedback refresh failed: %s", err)
+                else:
+                    error = err
             finally:
                 # Logout clears subscriptions. Restore the service identity and
                 # monitoring even after a rejected user command.
@@ -263,13 +288,45 @@ class ICTClient:
                                 raise
                         await self._request(0, 2, encode_pin(self.service_pin))
                         await self._request(0, 4, struct.pack("<H", 6000))
-                        await self._update_monitoring()
+                        # Re-subscribe after logout. The target was refreshed above;
+                        # the safety poll will refresh other cached records.
+                        await self._update_monitoring(refresh=False)
                     except ICTError as err:
                         await self.disconnect()
-                        error = error or err
+                        _LOGGER.warning("ICT service session restoration failed: %s", err)
+                        if not command_confirmed:
+                            error = error or err
             if error is not None:
                 raise error
         return True
+
+    @staticmethod
+    def _request_operation(group, sub, data):
+        if sub == 0x80 and group in KIND_BY_GROUP and len(data) >= 4:
+            idx = struct.unpack("<I", data[:4])[0]
+            return f"{KIND_BY_GROUP[group].title()} {idx} status"
+        if (group, sub) == (0, 5) and len(data) >= 6:
+            record_group, idx = struct.unpack("<HI", data[:6])
+            kind = KIND_BY_GROUP.get(record_group, "record")
+            return f"Monitor {kind} {idx}"
+        system_names = {
+            (0, 0): "Heartbeat", (0, 2): "Login", (0, 3): "Logout",
+            (0, 4): "Set login time", (0, 5): "Status monitoring",
+        }
+        if (group, sub) in system_names:
+            return system_names[group, sub]
+        if group in KIND_BY_GROUP and len(data) >= 4:
+            idx = struct.unpack("<I", data[:4])[0]
+            actions = {
+                (1, 0): "Lock", (1, 1): "Timed unlock", (1, 2): "Latched unlock",
+                (2, 0): "Disarm", (2, 3): "Arm away", (2, 4): "Force arm",
+                (2, 5): "Arm stay", (3, 0): "Turn off", (3, 1): "Turn on",
+                (4, 0): "Unbypass", (4, 1): "Temporary bypass",
+                (4, 2): "Permanent bypass",
+            }
+            action = actions.get((group, sub), f"Command {sub:#04x}")
+            return f"{action} {KIND_BY_GROUP[group]} {idx}"
+        return f"ICT command {group:#04x}/{sub:#04x}"
 
     async def _request(self, group, sub, data, expected=None):
         if not self._connected:
@@ -279,6 +336,8 @@ class ICTClient:
         try:
             await self._send_raw(group, sub, data)
             return await asyncio.wait_for(future, RESPONSE_TIMEOUT)
+        except ICTNack as err:
+            raise ICTNack(err.code, self._request_operation(group, sub, data)) from err
         except asyncio.TimeoutError as err:
             await self.disconnect()
             raise ICTError("ICT reply timed out; command outcome is unknown") from err

@@ -1,4 +1,21 @@
-# Deploying ICT Protege Automation 1.9.1
+# Deploying ICT Protege Automation 1.9.2
+
+## Intermittent Toggle action error fix
+
+Version 1.9.2 distinguishes the timed Unlock from the status and session-restoration
+requests that follow it. Once ICT acknowledges the timed Unlock, Home Assistant
+treats the button press as successful. If a later feedback or monitoring request is
+rejected, the integration logs the exact operation and reconnects when required;
+it does not send a second pulse.
+
+Toggle, normal door and output controls now use the already authenticated service
+session directly. This removes the repeated logout/login/monitoring cycle that was
+performed around each button press. Area controls still temporarily authenticate
+the user PIN entered in Home Assistant.
+
+If ICT rejects the timed Unlock itself, Home Assistant still reports the failure and
+now identifies it as `Timed unlock door <ID>: Invalid command`. That message means
+the controller rejected the actual door action and should be investigated in ICT.
 
 ## Toggle pulse feedback fix
 
@@ -52,7 +69,7 @@ setup and reload the new code; the existing service PIN can remain unchanged.
 2. Extract the deployment ZIP. Copy its `custom_components/ict_automation` folder to
    `/config/custom_components/ict_automation`, replacing the existing component files.
    Do not copy tests or development dependencies into Home Assistant.
-3. Restart Home Assistant. Confirm the integration reports version 1.9.0 and loads.
+3. Restart Home Assistant. Confirm the integration reports version 1.9.2 and loads.
 4. Match checksum settings at both ends. Default is 8 Bit Sum; None is available
    under Configure > Edit Connection Settings. Keep command/status/event ACK settings
    enabled as documented in README.md.

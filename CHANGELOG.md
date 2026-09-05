@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.2 - 2026-09-06
+
+- Treat an acknowledged control as successful even if its immediate status refresh
+  or service-session restoration subsequently fails.
+- Send door and output controls through the existing authenticated service session,
+  avoiding unnecessary logout/login and monitoring rebuilds for each action.
+- Identify the exact rejected operation in controller NACK errors, including timed
+  door Unlock, status, login and monitoring requests.
+- Re-subscribe monitoring after a user command without redundantly refreshing every
+  configured record; the normal safety poll retains periodic refresh coverage.
+- Disconnect and reconnect automatically when restoring the service session fails,
+  while never retrying a control command whose outcome may already be known.
+
 ## 1.9.1 - 2026-09-06
 
 - Do not block a Toggle door when cached lock feedback still shows the timed output
