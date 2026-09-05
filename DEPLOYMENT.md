@@ -65,14 +65,14 @@ setup and reload the new code; the existing service PIN can remain unchanged.
 
 ## Installation
 
-# Method 1: HACS (Recommended)
+### Method 1: HACS (Recommended)
 1.  Open **HACS** in Home Assistant.
 2.  Go to **Integrations** > **Custom repositories** (top right menu).
 3.  Paste this repository URL and select **Integration**.
 4.  Click **Download**.
 5.  **Restart Home Assistant**.
 
-# Method 2: Manual
+### Method 2: Manual
 1.  Download the repository as a ZIP file.
 2.  Extract the `custom_components/ict_automation` folder.
 3.  Copy this folder into your Home Assistant's `/config/custom_components/` directory.
